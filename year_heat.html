@@ -13,7 +13,7 @@
       //   ,{year:1997,month:3,max:25,min:16},{year:1998,month:1,max:25,min:16},{year:1998,month:2,max:25,min:16}
       // ,{year:1998,month:3,max:25,min:16},{year:1999,month:1,max:15,min:16},{year:1999,month:2,max:25,min:16},
       // {year:1999,month:3,max:25,min:16}]
-        d3.csv('data.temperature_daily.csv').then(data=>{
+        d3.csv('data/temperature_daily.csv').then(data=>{
           console.log(data);
         })
         const svg = d3.select('#mainsvg');
