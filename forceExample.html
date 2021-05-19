@@ -7,50 +7,62 @@
 
 <body>
     <script src="https://d3js.org/d3.v6.min.js"></script>
-    
+
     <json src="data\HKUST_coauthor_graph.json">
-        <svg width="1800" height="960" id="mainsvg" class="svgs"></svg>
+        <svg width="1200" height="800" id="mainsvg" class="svgs"></svg>
 
 
         <script>
-            //color target link start force ,mapstroke
+            const margin = { top: 70, right: 150, bottom: 60, left: 300 };
             const svg = d3.select('#mainsvg');
-            var width = svg.attr('width'), height = svg.attr('height');
+            const width = +svg.attr('width');
+            const height = +svg.attr('height');
+            const innerWidth = width - margin.left - margin.right;
+            const innerHeight = height - margin.top - margin.bottom;
+            const g = svg.append('g').attr('id', 'maingroup')
+                .attr('transform', `translate(${margin.left}, ${margin.top})`);
 
-            d3.json('data/HKUST_coauthor_graph.json').then(data => {
-                console.log(data);
-                data.nodes.forEach(d=>{
-                    d['weight']=0;
-                    
-                })//links have targets,targets to nodes id ,id to node
-                var groups=d3.group(data.nodes,d=>d.id);
-                console.log(groups);
-                data.edges.forEach(d=>{
-                    groups.get(d.target).forEach(d=>{
-                        d.weight++;
-                    })
-                    groups.get(d.source).forEach(d=>{
-                        d.weight++;
-                    })
-                    
+
+            d3.json('data/HKUST_coauthor_graph.json').then(originalData => {//data : fitered nodes.
+
+                console.log(originalData);
+
+                var filtered_nodes = originalData.nodes.filter(d => { return d.dept === 'CSE' })
+                console.log(filtered_nodes);
+                var filtered_edges = originalData.edges.filter(datum => {
+                    const needed1 = (element) => element.id === datum.source;
+                    const needed2 = (element) => element.id === datum.target;
+                    return filtered_nodes.some(needed1) && filtered_nodes.some(needed2);
+                }
+                )
+
+                console.log(filtered_edges);
+
+                const groups = d3.group(filtered_nodes, d => d.id);
+                const color = d3.scaleDiverging(d3.interpolateRainbow)
+                    .domain([0, 6])
+
+                filtered_nodes.forEach(d => {
+                    d['weight'] = 2;
                 })
-
-                console.log(data.nodes);
-                const links = data.edges.map(d => Object.create(d));
-                const nodes = data.nodes.map(d => Object.create(d));
-
-                var color = d3.scaleDiverging(d3.interpolateRainbow)
-                    .domain([0, nodes.length - 1])
-
+                filtered_edges.forEach(d => {
+                    groups.get(d.target).forEach(d => {
+                        d.weight++;
+                    })
+                    groups.get(d.source).forEach(d => {
+                        d.weight++;
+                    })
+                })
+                console.log(groups);
+                const links = filtered_edges.map(d => Object.create(d));
+                const nodes = filtered_nodes.map(d => Object.create(d));
                 const simulation = d3.forceSimulation(nodes)
-                    .force("link", d3.forceLink(links).id(d => d.id).distance(300).strength(d=>3/ Math.min(d.source.weight, d.target.weight)))
+                    .force("link", d3.forceLink(links).id(d => d.id).distance(50).strength(d => 2 / Math.min(d.source.weight, d.target.weight)))
                     .force("charge", d3.forceManyBody())
                     .force("center", d3.forceCenter(width / 2, height / 2))
 
-                console.log(d3.forceLink(links).strength);
-                    
-                var drag = simulation => {
 
+                var drag = simulation => {
                     function dragstarted(event) {
                         if (!event.active) simulation.alphaTarget(0.3).restart();
                         event.subject.fx = event.subject.x;
@@ -88,9 +100,35 @@
                     .selectAll("circle")
                     .data(nodes)
                     .join("circle")
-                    .attr("r", d=>d.weight)
-                    .attr("fill", d => color(d.id))
-                    .call(drag(simulation));
+                    .attr("r", d => d.weight)
+                    .attr("fill", d => color(d.id / 50))
+                    .call(drag(simulation))
+                    .on('mouseover', function (event, d) {
+                        link
+                            .style('stroke-width', function (edge) {
+                                if (edge.source === d || edge.target === d) {
+                                    return '2px'
+                                }
+                            })
+                            .style('stroke', function (edge) {
+                                if (edge.source === d || edge.target === d) {
+                                    return '#0FFFFF'
+                                }
+                            })
+                    })
+                    .on('mouseout', function (event, d) {
+                        link
+                            .style('stroke-width', function (edge) {
+                                if (edge.source === d || edge.target === d) {
+                                    return 1.5
+                                }
+                            })
+                            .style('stroke', function (edge) {
+                                if (edge.source === d || edge.target === d) {
+                                    return '#999'
+                                }
+                            })
+                    })
 
                 simulation.on("tick", () => {
                     link
@@ -102,13 +140,60 @@
                     node
                         .attr("cx", d => d.x)
                         .attr("cy", d => d.y)
-                        
-                    });
+
+                });
 
                 node.append("title")
                     .text(d => d.id);
 
+                const xScale = d3.scaleBand().
+                    domain(filtered_nodes.map(datum => datum.itsc)).
+                    range([0, innerWidth])
+                    .padding(0.1);
+
+                const yScale = d3.scaleBand().
+                    domain(filtered_nodes.map(datum => datum.itsc)).
+                    range([0, innerHeight])
+                    .padding(0.1);
+
+
+                    g.selectAll('rect') // 画柱图
+      .data(filtered_edges)
+      .enter()
+      .append('rect')
+                
+                                .attr('x', d => xScale(groups.get(d.source)[0].itsc))
+                                .attr('y', d => yScale(groups.get(d.target)[0].itsc))
+                                .attr('width', xScale.bandwidth())
+                                .attr('height', yScale.bandwidth())
+                                .attr('fill', 'blue')
+                                .attr('opacity', '0.8')
+
+
+                const yAxis = d3.axisLeft(yScale);
+                const xAxis = d3.axisTop(xScale);
+                g.append('g').call(yAxis);
+                g.append('g').call(xAxis);
+                const yAxisGroup = g.append('g').call(yAxis)
+                    .attr('id', 'yaxis')
+                    .text('month')
+                    .attr('font-size', '3em')
+                    .attr('transform', 'rotate(-90)') // y-axis label needs an additional transform; 
+                    .attr('x', -innerHeight / 2)
+                    .attr('y', -120)
+                    .attr('fill', 'black')
+                const xAxisGroup = g.append('g').call(xAxis)
+                    .attr('id', 'xaxis')
+                    .text('year')
+                    .attr('font-size', '3em')
+                    .attr('transform', 'rotate(-90)') // y-axis label needs an additional transform; 
+
+                    .attr('x', innerWidth / 2)
+                    .attr('y', 50)
+                    .attr('fill', 'black');
+
             })
+            
 
 
         </script>
