@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>HKUST Co-author Graph</title>
+</head>
+
+<body>
+    <h1>HKUST Co-author Graph</h1>
+
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+
+    <json src="data\HKUST_coauthor_graph.json">
+        <svg width="1300" height="800" id="mainsvg" class="svgs"></svg>
+
+
+        <script>
+            const margin = { top: 70, right: 150, bottom: 80, left: 100 };
+            const svg = d3.select('#mainsvg');//text
+            const width = +svg.attr('width');
+            const height = +svg.attr('height');
+            const innerWidth = 700;
+            const innerHeight = 700;
+            const g = svg.append('g').attr('id', 'maingroup')
+                .attr('transform', `translate(${margin.left}, ${margin.top})`);
+
+            d3.json('data/HKUST_coauthor_graph.json').then(originalData => {//data : fitered nodes.
+
+                var filtered_nodes = originalData.nodes.filter(d => { return d.dept === 'CSE' })
+                console.log(filtered_nodes);
+                var filtered_edges = originalData.edges.filter(datum => {
+                    const needed1 = (element) => element.id === datum.source;
+                    const needed2 = (element) => element.id === datum.target;
+                    return filtered_nodes.some(needed1) && filtered_nodes.some(needed2);
+                }
+                )
+
+                const groups = d3.group(filtered_nodes, d => d.id);
+                const color = d3.scaleDiverging(d3.interpolateRainbow)
+                    .domain([0, 6])
+
+                filtered_nodes.forEach(d => {//mouseover
+                    d['weight'] = 2;
+                })
+                filtered_edges.forEach(d => {
+                    groups.get(d.target).forEach(d => {
+                        d.weight++;
+                    })
+                    groups.get(d.source).forEach(d => {
+                        d.weight++;
+                    })
+                })
+                console.log(groups);
+                const links = filtered_edges.map(d => Object.create(d));
+                const nodes = filtered_nodes.map(d => Object.create(d));
+                console.log(links);
+                const simulation = d3.forceSimulation(nodes)
+                    .force("link", d3.forceLink(links).id(d => d.id).distance(50).strength(d => 2 / Math.min(d.source.weight, d.target.weight)))
+                    .force("charge", d3.forceManyBody())
+                    .force("center", d3.forceCenter(width / 2, height / 2))
+
+
+                var drag = simulation => {
+                    function dragstarted(event) {
+                        if (!event.active) simulation.alphaTarget(0.3).restart();
+                        event.subject.fx = event.subject.x;
+                        event.subject.fy = event.subject.y;
+                    }
+
+                    function dragged(event) {
+                        event.subject.fx = event.x;
+                        event.subject.fy = event.y;
+                    }
+
+                    function dragended(event) {
+                        if (!event.active) simulation.alphaTarget(0);
+                        event.subject.fx = null;
+                        event.subject.fy = null;
+                    }
+
+                    return d3.drag()
+                        .on("start", dragstarted)
+                        .on("drag", dragged)
+                        .on("end", dragended);
+                }
+
+                var matrix = [];
+                var n = filtered_nodes.length;
+
+                filtered_nodes.forEach(function (node0, i) {
+                    node0.index = i;
+
+                })
+
+                const xScale = d3.scaleBand().
+                    domain(filtered_nodes.map(datum => datum.index)).
+                    range([0, innerWidth])
+                    .padding(0.1);
+
+
+                filtered_nodes.forEach(function (node0, i) {
+                    matrix[i] = filtered_nodes.map(d => { return { x: xScale(i), y: xScale(d.index), value: 0 ,scaleY:d.index%n,scaleX:i} })//xy flase direction
+
+                })
+
+                filtered_edges.forEach(edge0 => {
+                    matrix[groups.get(edge0.source)[0].index][groups.get(edge0.target)[0].index].value += edge0.publications.length;
+                    matrix[groups.get(edge0.target)[0].index][groups.get(edge0.source)[0].index].value += edge0.publications.length;
+                })
+                console.log(matrix);
+
+                var rows = g.selectAll('.row')
+                    .data(matrix)
+                    .enter()
+                    .append('g')
+                    .attr('class', 'row')
+                    .attr('transform', function (d, i) { return `translate(0,${d[i].y})` })
+                    .attr('id',function(d,i){return `row${i}`})
+                    .each(drawRow)
+
+                rows.append('line')
+                    .attr('x2', innerWidth)
+
+                rows.append('text')
+                    .attr('x', -6)
+                    .attr('y', function (d, i) {
+                        return xScale.bandwidth() / 2;
+                    })
+                    .attr('dy', '.3em')
+                    .attr('font-size', '.7em')
+                    .attr('text-anchor', 'end')
+                    .attr('id',function(d,i){return `rowText${i}`})
+                    .text(function (d, i) { return filtered_nodes[i].itsc })
+                    // .style('stroke','red')//mouseover
+
+                var columns = g.selectAll('.column')
+                    .data(matrix)
+                    .enter()
+                    .append('g')
+                    .attr('class', 'column')
+                    .attr('transform', function (d, i) {
+                        return `translate(${d[i].x},0)rotate(-90)`
+                    })
+                    .attr('id',function(d,i){return `column${i}`})
+
+
+                columns.append("line")
+                    .attr("x1", -innerWidth);
+
+                columns.append("text")
+                    .attr("x", 6)
+                    .attr("y", function (d, i) {
+                        return xScale.bandwidth() / 2;
+                    })
+                    .attr('id',function(d,i){return `colText${i}`})
+                    .attr("dy", ".32em")
+                    .attr('font-size', '.7em')
+                    .attr("text-anchor", "start")
+                    .text(function (d, i) { return filtered_nodes[i].itsc; });
+
+                const link = svg.append("g")
+                    .attr("stroke", "#999")
+                    .attr("stroke-opacity", 0.6)
+                    .selectAll("line")
+                    .data(links)
+                    .join("line")
+                    .attr("stroke-width", 1.5)
+
+                const node = svg.append("g")
+                    .attr("stroke", "#fff")
+                    .attr("stroke-width", 1.5)
+                    .selectAll("circle")
+                    .data(nodes)
+                    .join("circle")
+                    .attr("r", d => d.weight)
+                    .attr("fill", d => color(d.id / 50))
+                    .call(drag(simulation))
+                    .on('mouseover', function (event, d) {
+
+                            d3.select(`#rowText${d.index}`)
+                                .style('stroke','red')
+                                d3.select(`#colText${d.index}`)
+                                .style('stroke','red')
+                        link
+                            .style('stroke-width', function (edge) {
+                                if (edge.source === d || edge.target === d) {
+                                    return '3px'
+                                }
+                            })
+                            .style('stroke', function (edge) {
+                                if (edge.source === d || edge.target === d) {
+                                    return '#0FFFFF'
+                                }
+                            })
+                    })
+                    .on('mouseout', function (event, d) {
+                        d3.select(`#rowText${d.index}`)
+                                .style('stroke','')
+                                d3.select(`#colText${d.index}`)
+                                .style('stroke','')
+                        link
+                            .style('stroke-width', function (edge) {
+                                if (edge.source === d || edge.target === d) {
+                                    return 1.5
+                                }
+                            })
+                            .style('stroke', function (edge) {
+                                if (edge.source === d || edge.target === d) {
+                                    return '#999'
+                                }
+                            })
+                    })
+
+                simulation.on("tick", () => {
+                    link
+                        .attr("x1", d => d.source.x)
+                        .attr("y1", d => d.source.y)
+                        .attr("x2", d => d.target.x)
+                        .attr("y2", d => d.target.y);
+
+                    node
+                        .attr("cx", d => d.x)
+                        .attr("cy", d => d.y)
+
+                });
+
+                node.append("title")
+                    .text(d => d.id);
+
+                
+
+
+                function drawRow(rows) {
+                    var cell = d3.select(this).selectAll('.cell')
+                        .data(rows)
+                        .enter()
+                        .append('rect')
+                        .attr('class', 'cell')
+                        .attr('x', function (d) { return `${d.y}` })
+                        .attr('width', xScale.bandwidth())
+                        .attr('height', xScale.bandwidth())
+                        .attr('fill', function (d) {
+                            // console.log(d.value);text
+                            return d.value === 0 ? '#DCDCDC' : color(d.value / 6)
+                        })
+                        .attr('opacity', '0.8')
+                        .on('mouseover', function (event, d) {
+
+
+                            if(d.value!==0){
+                                d3.select(`#rowText${d.scaleX}`)
+                                .style('stroke','red')
+                                d3.select(`#colText${d.scaleY}`)
+                                .style('stroke','red')
+                            }
+
+                            link//groups
+                            .style('stroke-width', function (edge) {
+                                if ((edge.source.index  === d.scaleX&&edge.target.index  === d.scaleY)
+                                 ||(edge.target.index  === d.scaleX&&edge.source.index  === d.scaleY)) {
+                                    return '3px'
+                                }
+                            })
+                            .style('stroke', function (edge) {
+                                if ((edge.source.index  === d.scaleX&&edge.target.index  === d.scaleY)
+                                 ||(edge.target.index  === d.scaleX&&edge.source.index  === d.scaleY)) {
+                                    return '#0FFFFF'
+                                }
+                            })
+                        })
+                        .on('mouseout', function (event, d) {
+                            link//groups
+                            .style('stroke-width', function (edge) {
+                                if ((edge.source.index  === d.scaleX&&edge.target.index  === d.scaleY)
+                                 ||(edge.target.index  === d.scaleX&&edge.source.index  === d.scaleY)) {
+                                    return '1.5'
+                                }
+                            })
+                            .style('stroke', function (edge) {
+                                if ((edge.source.index  === d.scaleX&&edge.target.index  === d.scaleY)
+                                 ||(edge.target.index  === d.scaleX&&edge.source.index  === d.scaleY)) {
+                                    return '#999'
+                                }
+                            })
+                            if(d.value!==0){
+                                d3.select(`#rowText${d.scaleX}`)
+                                .style('stroke','')
+                                d3.select(`#colText${d.scaleY}`)
+                                .style('stroke','')
+                            }
+                        })
+                }
+
+                
+
+                const g2 = svg.append('g').attr('id', 'colourScale')
+                    .attr('transform', `translate(${innerWidth + margin.left}, ${margin.top})`)
+
+                for (let i = 0; i <= 6; i++) {
+                    g2.append('rect')
+                        .attr('width', '30')
+                        .attr('y', `${i * 20}`)
+                        .attr('height', '20')
+                        .attr('fill', color(i))
+                        .attr('opacity', '0.8')
+
+
+                    g2.append('text')
+                        .text(`${i * 4}`)
+                        .attr('x', '30')
+                        .attr('y', `${i * 20}`)
+                        .attr('font-size', '12px')
+                        .attr('fill', 'black')
+                }
+
+            })
+
+
+
+        </script>
+</body>
+
+</html>
